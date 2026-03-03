@@ -23,6 +23,7 @@ import (
 	"github.com/amarnathcjd/gogram/telegram"
 
 	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 )
 
@@ -42,6 +43,10 @@ type AppStats struct {
 
 	SystemCPU string
 	AppCPU    string
+
+	SystemMemUsed  string
+	SystemMemTotal string
+	CPUCores       int
 }
 
 func humanBytes(bytes uint64) string {
@@ -88,6 +93,14 @@ func diskUsage(path string) (used, total string) {
 	return humanBytes(usedBytes), humanBytes(totalBytes)
 }
 
+func systemMemoryStats() (used, total string) {
+	v, err := mem.VirtualMemory()
+	if err != nil {
+		return "N/A", "N/A"
+	}
+	return humanBytes(v.Used), humanBytes(v.Total)
+}
+
 func appMemoryStats() (used, heap string, gc uint32, pause string) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
@@ -122,6 +135,7 @@ func appCPUPercent() string {
 
 func gatherAppStats() *AppStats {
 	memUsed, heap, gcCount, gcPause := appMemoryStats()
+	sysMemUsed, sysMemTotal := systemMemoryStats()
 
 	root := "/"
 	if runtime.GOOS == "windows" {
@@ -143,8 +157,11 @@ func gatherAppStats() *AppStats {
 		DiskUsed:  dUsed,
 		DiskTotal: dTotal,
 
-		SystemCPU: systemCPUPercent(),
-		AppCPU:    appCPUPercent(),
+		SystemCPU:      systemCPUPercent(),
+		AppCPU:         appCPUPercent(),
+		SystemMemUsed:  sysMemUsed,
+		SystemMemTotal: sysMemTotal,
+		CPUCores:       runtime.NumCPU(),
 	}
 
 	if limit := readContainerMemLimit(); limit > 0 {
@@ -158,7 +175,7 @@ func sysStatsHandler(msg *telegram.NewMessage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	sysMsg, err := msg.Reply("📊 Collecting system statistics...")
+	sysMsg, err := msg.Reply("Collecting system statistics...")
 	if err != nil {
 		return err
 	}
@@ -171,40 +188,51 @@ func sysStatsHandler(msg *telegram.NewMessage) error {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf(
-		"📊 <b>%s — Runtime Status</b>\n",
+		"<b>%s — Runtime Status</b>\n",
 		msg.Client.Me().FirstName,
 	))
 	sb.WriteString(strings.Repeat("─", 36) + "\n\n")
 
-	sb.WriteString("🤖 <b>Application</b>\n")
+	sb.WriteString("<b>System</b>\n")
 	sb.WriteString(fmt.Sprintf(
-		"• Uptime: %s\n• Goroutines: %d\n• Go Version: %s\n\n",
+		"• CPU usage: %s (%d cores)\n",
+		stats.SystemCPU,
+		stats.CPUCores,
+	))
+	sb.WriteString(fmt.Sprintf(
+		"• Ram usage: %s | %s\n",
+		stats.SystemMemUsed,
+		stats.SystemMemTotal,
+	))
+	sb.WriteString(fmt.Sprintf(
+		"• Storage: %s | %s\n\n",
+		stats.DiskUsed,
+		stats.DiskTotal,
+	))
+
+	sb.WriteString("<b>Application</b>\n")
+	sb.WriteString(fmt.Sprintf(
+		"• Uptime: %s\n• Goroutines: %d\n• Go Version: %s\n",
 		stats.Uptime,
 		stats.Goroutines,
 		stats.GoVersion,
 	))
-
-	sb.WriteString("🖥 <b>CPU</b>\n")
 	sb.WriteString(fmt.Sprintf(
-		"• Server CPU: %s\n• App CPU: %s\n\n",
-		stats.SystemCPU,
+		"• CPU usage: %s\n",
 		stats.AppCPU,
 	))
-
-	sb.WriteString("🧠 <b>Memory Usage</b>\n")
 	if stats.MemLimit != "" {
 		sb.WriteString(fmt.Sprintf(
-			"• App Memory: %s / %s\n",
+			"• Ram usage: %s | %s\n",
 			stats.AppMemUsed,
 			stats.MemLimit,
 		))
 	} else {
 		sb.WriteString(fmt.Sprintf(
-			"• App Memory: %s\n",
+			"• Ram usage: %s\n",
 			stats.AppMemUsed,
 		))
 	}
-
 	sb.WriteString(fmt.Sprintf(
 		"• Heap: %s\n• GC Runs: %d (pause %s)\n\n",
 		stats.AppHeap,
@@ -212,14 +240,7 @@ func sysStatsHandler(msg *telegram.NewMessage) error {
 		stats.GCPause,
 	))
 
-	sb.WriteString("💾 <b>Storage</b>\n")
-	sb.WriteString(fmt.Sprintf(
-		"• Disk Usage: %s / %s\n\n",
-		stats.DiskUsed,
-		stats.DiskTotal,
-	))
-
-	sb.WriteString("📦 <b>Database</b>\n")
+	sb.WriteString("<b>Database</b>\n")
 	sb.WriteString(fmt.Sprintf(
 		"• Chats: %d\n• Users: %d\n",
 		len(chats),
