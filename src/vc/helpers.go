@@ -19,18 +19,26 @@ import (
 
 	"ashokshau/tgmusic/src/vc/ntgcalls"
 
+	td "github.com/AshokShau/gotdbot"
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
-// handleFlood manages flood wait errors by pausing execution for the specified duration.
-// It returns true if a flood wait error is handled, and false otherwise.
+// handleFlood manages flood wait errors by pausing execution for short waits.
+// It sleeps only if the wait is <= 10 seconds. Otherwise it returns false.
 func handleFlood(err error) bool {
-	if wait := telegram.GetFloodWait(err); wait > 0 {
-		logger.Warnf("A flood wait has been detected. Sleeping for %ds.", wait)
-		time.Sleep(time.Duration(wait) * time.Second)
-		return true
+	wait := telegram.GetFloodWait(err)
+	if wait <= 0 {
+		return false
 	}
-	return false
+
+	if wait > 10 {
+		logger.Warn("Flood wait too long, skipping sleep", "seconds", wait)
+		return false
+	}
+
+	logger.Warn("Flood wait detected, sleeping", "seconds", wait)
+	time.Sleep(time.Duration(wait) * time.Second)
+	return true
 }
 
 func getVideoDimensions(filePath string) (int, int) {
@@ -39,12 +47,12 @@ func getVideoDimensions(filePath string) (int, int) {
 	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", filePath)
 	out, err := cmd.Output()
 	if err != nil {
-		logger.Warnf("[getVideoDimensions] Failed to get video dimensions (%s): %v", filePath, err)
+		logger.Warn("[getVideoDimensions] Failed to get video dimensions (%s): %v", filePath, err)
 		return 0, 0
 	}
 	dimensions := strings.Split(strings.TrimSpace(string(out)), "x")
 	if len(dimensions) != 2 {
-		logger.Warnf("[getVideoDimensions] Invalid video dimensions(%s): %s", filePath, string(out))
+		logger.Warn("[getVideoDimensions] Invalid video dimensions(%s): %s", filePath, string(out))
 		return 0, 0
 	}
 
@@ -165,11 +173,11 @@ func getMediaDescription(filePath string, isVideo bool, ffmpegParameters string)
 }
 
 // UpdateMembership updates the membership status of a user in a specific chat.
-func (c *TelegramCalls) UpdateMembership(chatId, userId int64, status string) {
+func (c *TelegramCalls) UpdateMembership(chatId, userId int64, status td.ChatMemberStatus) {
 	cacheKey := fmt.Sprintf("%d:%d", chatId, userId)
 	if c.statusCache != nil {
 		c.statusCache.Set(cacheKey, status)
-		logger.Info("[UpdateMembership] The cache has been updated: chat=%d user=%d status=%s", chatId, userId, status)
+		logger.Info("[UpdateMembership] The cache has been updated: chat= user= status=", "chat_id", chatId, "user_id", userId, "arg3", status)
 	}
 }
 

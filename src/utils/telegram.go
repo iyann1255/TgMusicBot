@@ -10,11 +10,13 @@ package utils
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
 
-	tg "github.com/amarnathcjd/gogram/telegram"
+	td "github.com/AshokShau/gotdbot"
 )
 
 var (
@@ -23,41 +25,52 @@ var (
 )
 
 // GetMessage retrieves a Telegram message by its URL.
-func GetMessage(client *tg.Client, url string) (*tg.NewMessage, error) {
+func GetMessage(client *td.Client, url string) (*td.Message, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {
-		return nil, errors.New("the provided URL is empty")
+		return nil, errors.New("url must not be empty")
 	}
 
-	parseTelegramURL := func(input string) (username string, chatID int64, msgID int, isPrivate bool, ok bool) {
-		if matches := publicRe.FindStringSubmatch(input); matches != nil {
-			id, err := strconv.Atoi(matches[2])
-			if err != nil {
-				return "", 0, 0, false, false
-			}
-			return matches[1], 0, id, false, true
+	link, err := buildMessageLink(url)
+	if err != nil {
+		return nil, err
+	}
+
+	return resolveMessage(client, link)
+}
+
+// buildMessageLink parses a Telegram message URL and returns a canonical t.me link.
+func buildMessageLink(url string) (string, error) {
+	if m := publicRe.FindStringSubmatch(url); m != nil {
+		msgID, err := strconv.Atoi(m[2])
+		if err != nil {
+			return "", fmt.Errorf("invalid message ID in URL: %w", err)
 		}
+		return fmt.Sprintf("https://t.me/%s/%d", m[1], msgID), nil
+	}
 
-		if matches := privateRe.FindStringSubmatch(input); matches != nil {
-			chat, err1 := strconv.ParseInt(matches[1], 10, 64)
-			msg, err2 := strconv.Atoi(matches[2])
-			if err1 != nil || err2 != nil {
-				return "", 0, 0, true, false
-			}
-			return "", chat, msg, true, true
+	if m := privateRe.FindStringSubmatch(url); m != nil {
+		chatID, err1 := strconv.ParseInt(m[1], 10, 64)
+		msgID, err2 := strconv.Atoi(m[2])
+		if err1 != nil || err2 != nil {
+			return "", fmt.Errorf("invalid chat/message ID in private URL: %v %v", err1, err2)
 		}
-
-		return "", 0, 0, false, false
+		return fmt.Sprintf("https://t.me/c/%d/%d", chatID, msgID), nil
 	}
 
-	username, chatID, msgID, isPrivate, ok := parseTelegramURL(url)
-	if !ok {
-		return nil, errors.New("the provided Telegram URL is invalid")
+	return "", errors.New("invalid Telegram message URL")
+}
+
+// resolveMessage fetches a message using its canonical t.me link.
+func resolveMessage(client *td.Client, link string) (*td.Message, error) {
+	info, err := client.GetMessageLinkInfo(link)
+	if err != nil {
+		slog.Info("failed to get message link info", "link", link, "error", err)
+		return nil, fmt.Errorf("get message link info: %w", err)
 	}
 
-	if isPrivate {
-		return client.GetMessageByID(chatID, int32(msgID))
+	if info.Message != nil {
+		return info.Message, nil
 	}
-
-	return client.GetMessageByID(username, int32(msgID))
+	return nil, fmt.Errorf("failed to get message link info")
 }
