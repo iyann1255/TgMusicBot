@@ -48,18 +48,19 @@ import (
 
 const DefaultStreamURL = "https://t.me/FallenSongs/1295"
 
-// getClientIndex selects an assistant client index for a given chat. It prioritizes existing assignments from the database.
+// getClientIndex selects an assistant client index (0-based) for a given chat.
+// It prioritizes existing assignments from the database.
 func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int, error) {
 	c.mu.RLock()
-	totalClients := len(c.availableClients)
+	totalClients := len(c.uBContext)
 	c.mu.RUnlock()
 
 	if totalClients == 0 {
-		return 0, fmt.Errorf("no clients are available")
+		return -1, fmt.Errorf("no clients are available")
 	}
 
 	var availableIndices []int
-	for i := 1; i <= totalClients; i++ {
+	for i := 0; i < totalClients; i++ {
 		excluded := false
 		for _, ex := range excludeIndices {
 			if i == ex {
@@ -74,7 +75,7 @@ func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int,
 
 	if len(availableIndices) == 0 {
 		// Fallback if all are excluded
-		for i := 1; i <= totalClients; i++ {
+		for i := 0; i < totalClients; i++ {
 			availableIndices = append(availableIndices, i)
 		}
 	}
@@ -94,7 +95,7 @@ func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int,
 		slog.Info("[TelegramCalls] DB.AssignAssistant error", "error", err)
 	}
 
-	if assignedIndex != 0 {
+	if assignedIndex >= 0 {
 		isAvailable := false
 		for _, idx := range availableIndices {
 			if idx == assignedIndex {
@@ -107,7 +108,7 @@ func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int,
 			return assignedIndex, nil
 		}
 
-		slog.Info("[TelegramCalls] Assigned assistant is unavailable or excluded. Overwriting with .", "arg1", assignedIndex, "arg2", newClientIndex)
+		slog.Info("[TelegramCalls] Assigned assistant is unavailable or excluded, overwriting", "old", assignedIndex, "new", newClientIndex)
 		if err = db.Instance.SetAssistant(ctx, chatID, newClientIndex); err != nil {
 			slog.Info("[TelegramCalls] DB.SetAssistant error", "error", err)
 		}
@@ -118,7 +119,7 @@ func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int,
 		slog.Info("[TelegramCalls] DB.SetAssistant error", "error", err)
 	}
 
-	slog.Info("[TelegramCalls] An assistant has been set for chat  ->", "id", chatID, "arg2", newClientIndex)
+	slog.Info("[TelegramCalls] An assistant has been set for chat", "chat_id", chatID, "index", newClientIndex)
 	return newClientIndex, nil
 }
 
@@ -132,10 +133,9 @@ func (c *TelegramCalls) GetGroupAssistant(chatID int64, excludeIndices ...int) (
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	clientName := fmt.Sprintf("client%d", clientIndex-1)
-	call, ok := c.uBContext[clientName]
+	call, ok := c.uBContext[clientIndex]
 	if !ok {
-		return nil, fmt.Errorf("no ntgcalls instance was found for %s (index %d)", clientName, clientIndex)
+		return nil, fmt.Errorf("no ntgcalls instance was found for client index %d", clientIndex)
 	}
 	return call, nil
 }
@@ -145,9 +145,10 @@ func (c *TelegramCalls) GetGroupAssistant(chatID int64, excludeIndices ...int) (
 // The session type is determined by the configuration (pyrogram, telethon, or gogram).
 func (c *TelegramCalls) StartClient(apiID int32, apiHash, stringSession string) (*ubot.Context, error) {
 	c.mu.Lock()
-	clientName := fmt.Sprintf("client%d", c.clientCounter)
-	c.clientCounter++
+	clientIndex := len(c.uBContext)
 	c.mu.Unlock()
+
+	clientName := fmt.Sprintf("client%d", clientIndex)
 
 	var sess *tg.Session
 	var err error
@@ -202,9 +203,8 @@ func (c *TelegramCalls) StartClient(apiID int32, apiHash, stringSession string) 
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.uBContext[clientName] = call
-	c.clients[clientName] = mtProto
-	c.availableClients = append(c.availableClients, clientName)
+	c.uBContext[clientIndex] = call
+	c.clients[clientIndex] = mtProto
 
 	mtProto.Logger.Info("[TelegramCalls] client %s has started successfully.", clientName)
 	return call, nil
@@ -219,8 +219,8 @@ func (c *TelegramCalls) StopAllClients() {
 		call.Close()
 	}
 
-	for name, client := range c.clients {
-		slog.Info("[TelegramCalls] Stopping the client", "arg1", name)
+	for idx, client := range c.clients {
+		slog.Info("[TelegramCalls] Stopping the client", "index", idx)
 		_ = client.Stop()
 	}
 }

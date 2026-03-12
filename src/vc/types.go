@@ -9,7 +9,7 @@
 package vc
 
 import (
-"log/slog"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -24,14 +24,12 @@ var logger = slog.Default()
 
 // TelegramCalls manages the state and operations for voice calls, including userbots and the main bot client.
 type TelegramCalls struct {
-	mu               sync.RWMutex
-	uBContext        map[string]*ubot.Context
-	clients          map[string]*tg.Client
-	availableClients []string
-	clientCounter    int
-	bot              *td.Client
-	statusCache      *cache.Cache[td.ChatMemberStatus]
-	inviteCache      *cache.Cache[string]
+	mu          sync.RWMutex
+	uBContext   map[int]*ubot.Context
+	clients     map[int]*tg.Client
+	bot         *td.Client
+	statusCache *cache.Cache[td.ChatMemberStatus]
+	inviteCache *cache.Cache[string]
 }
 
 var (
@@ -43,11 +41,10 @@ var (
 func getCalls() *TelegramCalls {
 	once.Do(func() {
 		instance = &TelegramCalls{
-			uBContext:     make(map[string]*ubot.Context),
-			clients:       make(map[string]*tg.Client),
-			clientCounter: 1,
-			statusCache:   cache.NewCache[td.ChatMemberStatus](2 * time.Hour),
-			inviteCache:   cache.NewCache[string](2 * time.Hour),
+			uBContext:   make(map[int]*ubot.Context),
+			clients:     make(map[int]*tg.Client),
+			statusCache: cache.NewCache[td.ChatMemberStatus](2 * time.Hour),
+			inviteCache: cache.NewCache[string](2 * time.Hour),
 		}
 	})
 	return instance

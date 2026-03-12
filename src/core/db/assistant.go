@@ -19,6 +19,7 @@ import (
 )
 
 // GetAssistant retrieves the index of the assistant for a chat.
+// Returns -1 if no assistant is assigned.
 func (db *Database) GetAssistant(ctx context.Context, chatID int64) (int, error) {
 	key := toKey(chatID)
 	if cached, ok := db.assistantCache.Get(key); ok {
@@ -30,9 +31,9 @@ func (db *Database) GetAssistant(ctx context.Context, chatID int64) (int, error)
 	err := db.assistantDB.FindOne(ctx, bson.M{"_id": chatID}).Decode(&doc)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return 0, nil
+			return -1, nil
 		}
-		return 0, err
+		return -1, err
 	}
 	db.assistantCache.Set(key, doc.Num)
 	return doc.Num, nil
@@ -62,7 +63,7 @@ func (db *Database) AssignAssistant(ctx context.Context, chatID int64, proposedA
 		"_id": chatID,
 		"$or": bson.A{
 			bson.M{"num": bson.M{"$exists": false}},
-			bson.M{"num": 0},
+			bson.M{"num": -1},
 		},
 	}
 	update := bson.M{"$set": bson.M{"num": proposedAssistant}}
@@ -73,7 +74,7 @@ func (db *Database) AssignAssistant(ctx context.Context, chatID int64, proposedA
 		if mongo.IsDuplicateKeyError(err) {
 			return db.GetAssistant(ctx, chatID)
 		}
-		return 0, err
+		return -1, err
 	}
 
 	if result.ModifiedCount > 0 || result.UpsertedCount > 0 {
