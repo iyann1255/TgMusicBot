@@ -86,6 +86,9 @@ func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int,
 		return availableIndices[0], nil
 	}
 	newClientIndex := availableIndices[n.Int64()]
+	if chatID == 0 {
+		return newClientIndex, nil
+	}
 
 	ctx, cancel := db.Ctx()
 	defer cancel()
@@ -440,6 +443,21 @@ func (c *TelegramCalls) PlayedTime(chatId int64) (uint64, error) {
 
 	// TODO: Pass the streamMode.
 	return call.Time(chatId, 0)
+}
+
+// CpuUsage Get an estimate of the CPU usage of the current process.
+func (c *TelegramCalls) CpuUsage(chatId int64) (float64, error) {
+	call, err := c.GetGroupAssistant(chatId)
+	if err != nil {
+		return 0, err
+	}
+
+	usage, err := call.CpuUsage()
+	if err != nil {
+		return 0, err
+	}
+
+	return usage, nil
 }
 
 var urlRegex = regexp.MustCompile(`^https?://`)

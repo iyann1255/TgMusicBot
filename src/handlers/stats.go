@@ -9,6 +9,7 @@
 package handlers
 
 import (
+	"ashokshau/tgmusic/src/vc"
 	"context"
 	"fmt"
 	"os"
@@ -176,6 +177,11 @@ func statsHandler(c *td.Client, ctx *td.Context) error {
 	}
 
 	msg := ctx.EffectiveMessage
+	chatID := msg.ChatId
+	if msg.IsPrivate() {
+		chatID = 0
+	}
+
 	ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -185,9 +191,9 @@ func statsHandler(c *td.Client, ctx *td.Context) error {
 	}
 
 	stats := gatherAppStats()
-
 	chats, _ := db.Instance.GetAllChats(ctx2)
 	users, _ := db.Instance.GetAllUsers(ctx2)
+	ntgCpuUsage, _ := vc.Calls.CpuUsage(chatID)
 
 	var sb strings.Builder
 
@@ -222,8 +228,9 @@ func statsHandler(c *td.Client, ctx *td.Context) error {
 		stats.GoVersion,
 	))
 	sb.WriteString(fmt.Sprintf(
-		"• CPU usage: %s\n",
+		"• CPU usage: %s\n• NTG Calls CPU: %.2f%%\n",
 		stats.AppCPU,
+		ntgCpuUsage,
 	))
 	if stats.MemLimit != "" {
 		sb.WriteString(fmt.Sprintf(

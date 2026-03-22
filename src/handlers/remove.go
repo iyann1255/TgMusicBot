@@ -22,7 +22,7 @@ func removeHandler(c *td.Client, ctx *td.Context) error {
 	if !adminMode(c, ctx) {
 		return td.EndGroups
 	}
-	
+
 	chatID := ctx.EffectiveChatId
 	m := ctx.EffectiveMessage
 

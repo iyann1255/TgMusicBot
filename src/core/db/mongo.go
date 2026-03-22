@@ -23,15 +23,15 @@ import (
 
 // Database encapsulates the MongoDB connection, database, collections, and caches.
 type Database struct {
-	client       *mongo.Client
-	DB           *mongo.Database
-	chatDB       *mongo.Collection
-	userDB       *mongo.Collection
-	playlistDB   *mongo.Collection
-	assistantDB  *mongo.Collection
-	authDB       *mongo.Collection
-	langDB       *mongo.Collection
-	cacheDB      *mongo.Collection
+	client      *mongo.Client
+	DB          *mongo.Database
+	chatDB      *mongo.Collection
+	userDB      *mongo.Collection
+	playlistDB  *mongo.Collection
+	assistantDB *mongo.Collection
+	authDB      *mongo.Collection
+	langDB      *mongo.Collection
+	cacheDB     *mongo.Collection
 
 	chatCache      *cache.Cache[*Chats]
 	userCache      *cache.Cache[*Users]
