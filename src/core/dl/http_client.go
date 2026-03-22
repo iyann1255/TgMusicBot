@@ -12,6 +12,7 @@ import (
 	"ashokshau/tgmusic/config"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -37,10 +38,29 @@ const (
 var client = &http.Client{
 	Timeout: defaultRequestTimeout,
 	Transport: &http.Transport{
-		TLSHandshakeTimeout:   defaultConnectTimeout,
+		TLSHandshakeTimeout: defaultConnectTimeout,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+
 		ResponseHeaderTimeout: defaultRequestTimeout,
-		IdleConnTimeout:       90 * time.Second,
-		MaxIdleConns:          100,
+		ExpectContinueTimeout: 1 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   defaultConnectTimeout,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		MaxConnsPerHost:     20,
+		DisableCompression:  false,
+		ForceAttemptHTTP2:   true,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 2 {
+			return fmt.Errorf("too many redirects (%d)", len(via))
+		}
+		return nil
 	},
 }
 

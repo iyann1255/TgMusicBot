@@ -49,7 +49,6 @@ func NewYouTubeData(query string) *YouTubeData {
 	}
 }
 
-
 // IsValid checks if the query string matches any of the known YouTube URL patterns.
 func (y *YouTubeData) IsValid() bool {
 	if y.Query == "" {
@@ -79,13 +78,13 @@ func (y *YouTubeData) GetInfo(ctx context.Context) (utils.PlatformTracks, error)
 	switch {
 	case playlistID != "":
 		if strings.HasPrefix(playlistID, "RD") {
-			return GetYouTubeMixPlaylist(ctx, playlistID)
+			return getYouTubeMixPlaylist(ctx, playlistID)
 		}
-		return GetYouTubePlaylist(ctx, playlistID)
+		return getYouTubePlaylist(ctx, playlistID)
 
 	case videoID != "":
 		for _, query := range []string{videoID, y.Query} {
-			tracks, err := searchYouTube(query, 20)
+			tracks, err := searchYouTube(query, 10)
 			if err != nil {
 				continue
 			}
@@ -97,7 +96,7 @@ func (y *YouTubeData) GetInfo(ctx context.Context) (utils.PlatformTracks, error)
 			}
 		}
 
-		return GetYouTubeVideo(ctx, videoID)
+		return getYouTubeVideo(ctx, videoID)
 	}
 
 	return utils.PlatformTracks{}, errors.New("no video or playlist results were found")
@@ -105,7 +104,7 @@ func (y *YouTubeData) GetInfo(ctx context.Context) (utils.PlatformTracks, error)
 
 // Search performs a search for a track on YouTube.
 func (y *YouTubeData) Search(_ context.Context) (utils.PlatformTracks, error) {
-	tracks, err := searchYouTube(y.Query, 20)
+	tracks, err := searchYouTube(y.Query, 5)
 	if err != nil {
 		return utils.PlatformTracks{}, err
 	}
