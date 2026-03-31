@@ -10,48 +10,29 @@ package ubot
 
 import (
 	"ashokshau/tgmusic/src/vc/ntgcalls"
-	"fmt"
 	"slices"
 
 	tg "github.com/amarnathcjd/gogram/telegram"
 )
 
 func (ctx *Context) joinPresentation(chatId int64, join bool) error {
-	chatMutex := ctx.getChatMutex(chatId)
-	chatMutex.Lock()
-	defer chatMutex.Unlock()
-
 	defer func() {
-		ctx.stateMutex.Lock()
 		if ctx.waitConnect[chatId] != nil {
 			delete(ctx.waitConnect, chatId)
 		}
-		ctx.stateMutex.Unlock()
 	}()
 	connectionMode, err := ctx.binding.GetConnectionMode(chatId)
 	if err != nil {
 		return err
 	}
 	if connectionMode == ntgcalls.StreamConnection {
-		ctx.stateMutex.Lock()
 		if ctx.pendingConnections[chatId] != nil {
 			ctx.pendingConnections[chatId].Presentation = join
 		}
-		ctx.stateMutex.Unlock()
 	} else if connectionMode == ntgcalls.RtcConnection {
-		ctx.stateMutex.Lock()
-		isJoined := slices.Contains(ctx.presentations, chatId)
-		ctx.stateMutex.Unlock()
-
 		if join {
-			if !isJoined {
-				ctx.stateMutex.Lock()
-				if ctx.waitConnect[chatId] != nil {
-					ctx.stateMutex.Unlock()
-					return fmt.Errorf("connection already in progress for chat %d", chatId)
-				}
-				ctx.waitConnect[chatId] = make(chan error, 1) // Buffered to prevent deadlock
-				ctx.stateMutex.Unlock()
+			if !slices.Contains(ctx.presentations, chatId) {
+				ctx.waitConnect[chatId] = make(chan error)
 				jsonParams, err := ctx.binding.InitPresentation(chatId)
 				if err != nil {
 					return err
@@ -84,20 +65,11 @@ func (ctx *Context) joinPresentation(chatId int64, join bool) error {
 				if err != nil {
 					return err
 				}
-				ctx.stateMutex.Lock()
-				waitChan := ctx.waitConnect[chatId]
-				ctx.stateMutex.Unlock()
-				chatMutex.Unlock()
-				<-waitChan
-				chatMutex.Lock()
-				ctx.stateMutex.Lock()
+				<-ctx.waitConnect[chatId]
 				ctx.presentations = append(ctx.presentations, chatId)
-				ctx.stateMutex.Unlock()
 			}
-		} else if isJoined {
-			ctx.stateMutex.Lock()
+		} else if slices.Contains(ctx.presentations, chatId) {
 			ctx.presentations = stdRemove(ctx.presentations, chatId)
-			ctx.stateMutex.Unlock()
 			err = ctx.binding.StopPresentation(chatId)
 			if err != nil {
 				return err

@@ -13,15 +13,9 @@ import (
 )
 
 func (ctx *Context) Play(chatId int64, mediaDescription ntgcalls.MediaDescription) error {
-	chatMutex := ctx.getChatMutex(chatId)
-	chatMutex.Lock()
 	if ctx.binding.Calls()[chatId] != nil {
-		err := ctx.binding.SetStreamSources(chatId, ntgcalls.CaptureStream, mediaDescription)
-		chatMutex.Unlock()
-		return err
+		return ctx.binding.SetStreamSources(chatId, ntgcalls.CaptureStream, mediaDescription)
 	}
-	chatMutex.Unlock()
-
 	err := ctx.connectCall(chatId, mediaDescription, "")
 	if err != nil {
 		return err

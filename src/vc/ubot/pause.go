@@ -9,9 +9,5 @@
 package ubot
 
 func (ctx *Context) Pause(chatId int64) (bool, error) {
-	chatMutex := ctx.getChatMutex(chatId)
-	chatMutex.Lock()
-	defer chatMutex.Unlock()
-
 	return ctx.binding.Pause(chatId)
 }
