@@ -102,7 +102,7 @@ For detailed instructions, see [installation.md](installation.md).
 
 2. **Run with Docker Compose**
    ```bash
-   docker-compose up -d --build
+   docker compose up -d --build
    ```
 
 </details>
