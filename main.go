@@ -64,7 +64,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	clientConfig := &gotdbot.ClientOpts{
-		LibraryPath: "./libtdjson.so.1.8.62",
+		LibraryPath: "./libtdjson.so.1.8.63",
 		Logger:      logger,
 	}
 
