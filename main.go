@@ -24,7 +24,7 @@ import (
 	"github.com/AshokShau/gotdbot"
 )
 
-//go:generate go run github.com/AshokShau/gotdbot/scripts/tools@latest
+//go:generate go run github.com/AshokShau/gotdbot/scripts/tools
 
 // main serves as the entry point for the application.
 func main() {
