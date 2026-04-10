@@ -144,3 +144,57 @@ func ClearAdminCache(chatID int64) {
 	}
 	AdminCache.Delete(adminCacheKey(chatID))
 }
+
+// UpdateAdminCache updates the cached administrator list for chatID.
+// If the member's status is an administrator or creator, it is added or updated.
+// Otherwise, the member is removed from the cached list.
+func UpdateAdminCache(chatID int64, member *td.ChatMember) {
+	key := adminCacheKey(chatID)
+	admins, ok := AdminCache.Get(key)
+	if !ok {
+		return
+	}
+
+	userID := int64(0)
+	if user, ok := member.MemberId.(*td.MessageSenderUser); ok {
+		userID = user.UserId
+	} else if chat, ok := member.MemberId.(*td.MessageSenderChat); ok {
+		userID = chat.ChatId
+	}
+
+	if userID == 0 {
+		return
+	}
+
+	isAdmin := false
+	switch member.Status.(type) {
+	case *td.ChatMemberStatusAdministrator, *td.ChatMemberStatusCreator:
+		isAdmin = true
+	}
+
+	updated := false
+	newAdmins := make([]*td.ChatMember, 0, len(admins))
+	for _, admin := range admins {
+		currentID := int64(0)
+		if u, ok := admin.MemberId.(*td.MessageSenderUser); ok {
+			currentID = u.UserId
+		} else if c, ok := admin.MemberId.(*td.MessageSenderChat); ok {
+			currentID = c.ChatId
+		}
+
+		if currentID == userID {
+			if isAdmin {
+				newAdmins = append(newAdmins, member)
+				updated = true
+			}
+			continue
+		}
+		newAdmins = append(newAdmins, admin)
+	}
+
+	if isAdmin && !updated {
+		newAdmins = append(newAdmins, member)
+	}
+
+	AdminCache.Set(key, newAdmins)
+}

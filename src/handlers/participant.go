@@ -91,6 +91,10 @@ func handleParticipant(client *gotdbot.Client, ctx *gotdbot.Context) error {
 	oldStatus := update.OldChatMember.Status
 	newStatus := update.NewChatMember.Status
 
+	if isAdmin(oldStatus) || isAdmin(newStatus) {
+		cache.UpdateAdminCache(chatID, update.NewChatMember)
+	}
+
 	client.Logger.Debug("Status change: UserID= Old= New= ChatID=", "user_id", userID, "arg2", oldStatus, "arg3", newStatus, "chat_id", chatID)
 
 	return handleParticipantStatusChange(
@@ -118,6 +122,15 @@ func storeChatReference(chatID int64) {
 
 func isRelevantUser(userID, botID, assistantID int64) bool {
 	return userID == botID || userID == assistantID
+}
+
+func isAdmin(status gotdbot.ChatMemberStatus) bool {
+	switch status.(type) {
+	case *gotdbot.ChatMemberStatusAdministrator, *gotdbot.ChatMemberStatusCreator:
+		return true
+	default:
+		return false
+	}
 }
 
 func handleParticipantStatusChange(
@@ -300,6 +313,7 @@ func handlePromotionDemotion(
 }
 
 func updateStatusCache(chatID, userID int64, status gotdbot.ChatMemberStatus) {
+
 	call, _, err := vc.Calls.GetGroupAssistant(chatID)
 	if err != nil {
 		return
