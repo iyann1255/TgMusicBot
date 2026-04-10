@@ -49,7 +49,7 @@ import (
 const DefaultStreamURL = "https://t.me/FallenSongs/1295"
 
 // getClientIndex selects an assistant client index (0-based) for a given chat.
-// It prioritizes existing assignments from the database.
+// It prioritizes existing assignments from the database if they are not excluded.
 func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int, error) {
 	c.mu.RLock()
 	totalClients := len(c.uBContext)
@@ -74,30 +74,20 @@ func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int,
 	}
 
 	if len(availableIndices) == 0 {
-		// Fallback if all are excluded
-		for i := 0; i < totalClients; i++ {
-			availableIndices = append(availableIndices, i)
-		}
-	}
-
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(availableIndices))))
-	if err != nil {
-		slog.Info("[TelegramCalls] Could not generate a random number", "error", err)
-		return availableIndices[0], nil
-	}
-	newClientIndex := availableIndices[n.Int64()]
-	if chatID == 0 {
-		return newClientIndex, nil
+		return -1, fmt.Errorf("all available assistants (%d) are excluded", totalClients)
 	}
 
 	ctx, cancel := db.Ctx()
 	defer cancel()
 
-	assignedIndex, err := db.Instance.AssignAssistant(ctx, chatID, newClientIndex)
+	// Check if an assistant is already assigned for this chat.
+	assignedIndex, err := db.Instance.GetAssistant(ctx, chatID)
 	if err != nil {
-		slog.Info("[TelegramCalls] DB.AssignAssistant error", "error", err)
+		slog.Info("[TelegramCalls] DB.GetAssistant error", "error", err)
+		assignedIndex = -1
 	}
 
+	// If already assigned and not excluded, use it.
 	if assignedIndex >= 0 {
 		isAvailable := false
 		for _, idx := range availableIndices {
@@ -106,31 +96,36 @@ func (c *TelegramCalls) getClientIndex(chatID int64, excludeIndices []int) (int,
 				break
 			}
 		}
-
 		if isAvailable {
 			return assignedIndex, nil
 		}
+		slog.Info("[TelegramCalls] Assigned assistant is excluded, selecting new one", "chat_id", chatID, "old", assignedIndex)
+	}
 
-		slog.Info("[TelegramCalls] Assigned assistant is unavailable or excluded, overwriting", "old", assignedIndex, "new", newClientIndex)
-		if err = db.Instance.SetAssistant(ctx, chatID, newClientIndex); err != nil {
-			slog.Info("[TelegramCalls] DB.SetAssistant error", "error", err)
+	// Select a new one from available indices.
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(availableIndices))))
+	if err != nil {
+		slog.Info("[TelegramCalls] Could not generate a random number", "error", err)
+		return availableIndices[0], nil
+	}
+	newClientIndex := availableIndices[n.Int64()]
+
+	// If no assistant was assigned at all, try to assign it.
+	// But don't overwrite yet if one was already assigned (it might be temporarily excluded).
+	if assignedIndex == -1 && chatID != 0 {
+		if _, err := db.Instance.AssignAssistant(ctx, chatID, newClientIndex); err != nil {
+			slog.Info("[TelegramCalls] DB.AssignAssistant error", "error", err)
 		}
-		return newClientIndex, nil
 	}
 
-	if err = db.Instance.SetAssistant(ctx, chatID, newClientIndex); err != nil {
-		slog.Info("[TelegramCalls] DB.SetAssistant error", "error", err)
-	}
-
-	slog.Info("[TelegramCalls] An assistant has been set for chat", "chat_id", chatID, "index", newClientIndex)
 	return newClientIndex, nil
 }
 
-// GetGroupAssistant retrieves the ubot.Context for a given chat, which is used to interact with the voice call.
-func (c *TelegramCalls) GetGroupAssistant(chatID int64, excludeIndices ...int) (*ubot.Context, error) {
+// GetGroupAssistant retrieves the ubot.Context and its index for a given chat.
+func (c *TelegramCalls) GetGroupAssistant(chatID int64, excludeIndices ...int) (*ubot.Context, int, error) {
 	clientIndex, err := c.getClientIndex(chatID, excludeIndices)
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 
 	c.mu.RLock()
@@ -138,9 +133,9 @@ func (c *TelegramCalls) GetGroupAssistant(chatID int64, excludeIndices ...int) (
 
 	call, ok := c.uBContext[clientIndex]
 	if !ok {
-		return nil, fmt.Errorf("no ntgcalls instance was found for client index %d", clientIndex)
+		return nil, -1, fmt.Errorf("no ntgcalls instance was found for client index %d", clientIndex)
 	}
-	return call, nil
+	return call, clientIndex, nil
 }
 
 // StartClient initializes a new userbot client and adds it to the pool of available assistants.
@@ -231,7 +226,7 @@ func (c *TelegramCalls) StopAllClients() {
 // PlayMedia plays media in a voice chat using ffmpeg. It downloads the file if necessary
 // and updates the cache and logger status.
 func (c *TelegramCalls) PlayMedia(chatID int64, filePath string, video bool, ffmpegParameters string) error {
-	call, err := c.GetGroupAssistant(chatID)
+	call, index, err := c.GetGroupAssistant(chatID)
 	if err != nil {
 		return err
 	}
@@ -249,13 +244,13 @@ func (c *TelegramCalls) PlayMedia(chatID int64, filePath string, video bool, ffm
 		_, _ = call.App.ResolvePeer(chatID)
 	}
 
-	slog.Debug("Playing media in chat", "id", chatID, "path", filePath)
+	slog.Debug("Playing media in chat", "id", chatID, "path", filePath, "index", index)
 
 	mediaDesc := getMediaDescription(filePath, video, ffmpegParameters)
 	if err = call.Play(chatID, mediaDesc); err != nil {
-		logger.Error("Failed to play the media", "error", err)
+		logger.Error("Failed to play the media", "error", err, "index", index)
 		cache.ChatCache.ClearChat(chatID)
-		return fmt.Errorf("playback failed: %w", err)
+		return fmt.Errorf("playback (client %d) failed: %w", index, err)
 	}
 
 	if db.Instance.GetLoggerStatus(ctx, c.bot.Me.Id) {
@@ -363,15 +358,15 @@ func (c *TelegramCalls) playSong(chatID int64, song *utils.CachedTrack) error {
 
 // Stop halts media playback in a voice chat and clears the chat's cache.
 func (c *TelegramCalls) Stop(chatId int64) error {
-	call, err := c.GetGroupAssistant(chatId)
+	call, index, err := c.GetGroupAssistant(chatId)
 	if err != nil {
 		return err
 	}
 	cache.ChatCache.ClearChat(chatId)
 	err = call.Stop(chatId)
 	if err != nil {
-		slog.Info("[Stop] Failed to stop the call", "error", err)
-		return err
+		slog.Info("[Stop] Failed to stop the call", "error", err, "index", index)
+		return fmt.Errorf("failed to stop call (client %d): %w", index, err)
 	}
 	return nil
 }
@@ -379,14 +374,15 @@ func (c *TelegramCalls) Stop(chatId int64) error {
 // Pause temporarily stops media playback in a voice chat.
 // It returns true if the operation was successful, and an error otherwise.
 func (c *TelegramCalls) Pause(chatId int64) (bool, error) {
-	call, err := c.GetGroupAssistant(chatId)
+	call, index, err := c.GetGroupAssistant(chatId)
 	if err != nil {
 		return false, err
 	}
 
 	res, err := call.Pause(chatId)
 	if err != nil {
-		slog.Warn("[Pause] Failed to pause the call", "error", err)
+		slog.Warn("[Pause] Failed to pause the call", "error", err, "index", index)
+		return res, fmt.Errorf("failed to pause (client %d): %w", index, err)
 	}
 	return res, err
 }
@@ -394,13 +390,14 @@ func (c *TelegramCalls) Pause(chatId int64) (bool, error) {
 // Resume continues a paused media playback in a voice chat.
 // It returns true if the operation was successful, and an error otherwise.
 func (c *TelegramCalls) Resume(chatId int64) (bool, error) {
-	call, err := c.GetGroupAssistant(chatId)
+	call, index, err := c.GetGroupAssistant(chatId)
 	if err != nil {
 		return false, err
 	}
 	res, err := call.Resume(chatId)
 	if err != nil {
-		slog.Warn("[Resume] Failed to resume the call", "error", err)
+		slog.Warn("[Resume] Failed to resume the call", "error", err, "index", index)
+		return res, fmt.Errorf("failed to resume (client %d): %w", index, err)
 	}
 	return res, err
 }
@@ -408,13 +405,14 @@ func (c *TelegramCalls) Resume(chatId int64) (bool, error) {
 // Mute silences the media playback in a voice chat.
 // It returns true if the operation was successful, and an error otherwise.
 func (c *TelegramCalls) Mute(chatId int64) (bool, error) {
-	call, err := c.GetGroupAssistant(chatId)
+	call, index, err := c.GetGroupAssistant(chatId)
 	if err != nil {
 		return false, err
 	}
 	res, err := call.Mute(chatId)
 	if err != nil {
-		slog.Warn("[Mute] Failed to mute the call", "error", err)
+		slog.Warn("[Mute] Failed to mute the call", "error", err, "index", index)
+		return res, fmt.Errorf("failed to mute (client %d): %w", index, err)
 	}
 	return res, err
 }
@@ -422,13 +420,14 @@ func (c *TelegramCalls) Mute(chatId int64) (bool, error) {
 // Unmute restores the audio of a muted media playback in a voice chat.
 // It returns true if the operation was successful, and an error otherwise.
 func (c *TelegramCalls) Unmute(chatId int64) (bool, error) {
-	call, err := c.GetGroupAssistant(chatId)
+	call, index, err := c.GetGroupAssistant(chatId)
 	if err != nil {
 		return false, err
 	}
 	res, err := call.Unmute(chatId)
 	if err != nil {
-		slog.Warn("[Unmute] Failed to unmute the call", "error", err)
+		slog.Warn("[Unmute] Failed to unmute the call", "error", err, "index", index)
+		return res, fmt.Errorf("failed to unmute (client %d): %w", index, err)
 	}
 	return res, err
 }
@@ -436,25 +435,29 @@ func (c *TelegramCalls) Unmute(chatId int64) (bool, error) {
 // PlayedTime retrieves the elapsed time of the current playback in a voice chat.
 // It returns the elapsed time in seconds and an error if any.
 func (c *TelegramCalls) PlayedTime(chatId int64) (uint64, error) {
-	call, err := c.GetGroupAssistant(chatId)
+	call, index, err := c.GetGroupAssistant(chatId)
 	if err != nil {
 		return 0, err
 	}
 
 	// TODO: Pass the streamMode.
-	return call.Time(chatId, 0)
+	time, err := call.Time(chatId, 0)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get played time (client %d): %w", index, err)
+	}
+	return time, nil
 }
 
 // CpuUsage Get an estimate of the CPU usage of the current process.
 func (c *TelegramCalls) CpuUsage(chatId int64) (float64, error) {
-	call, err := c.GetGroupAssistant(chatId)
+	call, index, err := c.GetGroupAssistant(chatId)
 	if err != nil {
 		return 0, err
 	}
 
 	usage, err := call.CpuUsage()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get cpu usage (client %d): %w", index, err)
 	}
 
 	return usage, nil

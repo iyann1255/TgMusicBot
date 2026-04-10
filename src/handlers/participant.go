@@ -50,7 +50,7 @@ func handleParticipant(client *gotdbot.Client, ctx *gotdbot.Context) error {
 	}
 
 	userID, _ := getMemberInfo(update.NewChatMember.MemberId)
-	call, err := vc.Calls.GetGroupAssistant(chatID)
+	call, _, err := vc.Calls.GetGroupAssistant(chatID)
 	if err != nil {
 		client.Logger.Error("Failed to get assistant for chat", "chat_id", chatID, "error", err)
 		return gotdbot.EndGroups
@@ -300,8 +300,7 @@ func handlePromotionDemotion(
 }
 
 func updateStatusCache(chatID, userID int64, status gotdbot.ChatMemberStatus) {
-
-	call, err := vc.Calls.GetGroupAssistant(chatID)
+	call, _, err := vc.Calls.GetGroupAssistant(chatID)
 	if err != nil {
 		return
 	}
