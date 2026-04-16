@@ -183,6 +183,10 @@ func (c *TelegramCalls) UpdateMembership(chatId, userId int64, status td.ChatMem
 
 // UpdateInviteLink updates the invite link for a specific chat.
 func (c *TelegramCalls) UpdateInviteLink(chatId int64, link string) {
-	cacheKey := fmt.Sprintf("%d", chatId)
+	cacheKey := strconv.FormatInt(chatId, 10)
+	if link == "" {
+		c.inviteCache.Delete(cacheKey)
+		return
+	}
 	c.inviteCache.Set(cacheKey, link)
 }
