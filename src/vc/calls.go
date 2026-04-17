@@ -32,6 +32,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"math/big"
 	"os"
@@ -241,17 +242,21 @@ func (c *TelegramCalls) playSong(chatID int64, song *utils.CachedTrack) error {
 		song.Duration = utils.GetMediaDuration(song.FilePath)
 	}
 
+	escURL := html.EscapeString(song.URL)
+	escName := html.EscapeString(song.Name)
+	escUser := html.EscapeString(song.User)
+
 	text := fmt.Sprintf(
 		"<u><b>| Started streaming</b></u>\n\n<b>Title:</b> <a href='%s'>%s</a>\n\n<b>Duration:</b> %s min\n<b>Requested by:</b> %s",
-		song.URL,
-		song.Name,
+		escURL,
+		escName,
 		utils.SecToMin(song.Duration),
-		song.User,
+		escUser,
 	)
 
 	_, err = reply.EditText(c.bot, text, &td.EditTextMessageOpts{
 		ReplyMarkup:           core.ControlButtons("play"),
-		ParseMode:             "HTMl",
+		ParseMode:             "HTML",
 		DisableWebPagePreview: true,
 	})
 

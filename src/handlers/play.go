@@ -180,11 +180,13 @@ func handleMedia(c *td.Client, m *td.Message, updater *td.Message, dlMsg *td.Mes
 	}
 
 	qLen := cache.ChatCache.AddSong(chatId, &saveCache)
-
 	if qLen > 1 {
+		escURL := html.EscapeString(saveCache.URL)
+		escName := html.EscapeString(saveCache.Name)
+		escUser := html.EscapeString(saveCache.User)
 		queueInfo := fmt.Sprintf(
 			"<u><b>Added to queue: %d</b></u>\n\n<b>Title:</b> <a href='%s'>%s</a>\n\n<b>Duration:</b> %s min\n<b>Requested by:</b> %s",
-			qLen, saveCache.URL, saveCache.Name, utils.SecToMin(saveCache.Duration), saveCache.User,
+			qLen, escURL, escName, utils.SecToMin(saveCache.Duration), escUser,
 		)
 		_, err := updater.EditText(c, queueInfo, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("play"), ParseMode: "HTML", DisableWebPagePreview: true})
 		return err
@@ -211,9 +213,13 @@ func handleMedia(c *td.Client, m *td.Message, updater *td.Message, dlMsg *td.Mes
 		return err
 	}
 
+	escURL := html.EscapeString(saveCache.URL)
+	escName := html.EscapeString(saveCache.Name)
+	escUser := html.EscapeString(saveCache.User)
+
 	nowPlaying := fmt.Sprintf(
 		"<u><b>| Started streaming</b></u>\n\n<b>Title:</b> <a href='%s'>%s</a>\n\n<b>Duration:</b> %s min\n<b>Requested by:</b> %s",
-		saveCache.URL, saveCache.Name, utils.SecToMin(saveCache.Duration), saveCache.User,
+		escURL, escName, utils.SecToMin(saveCache.Duration), escUser,
 	)
 
 	_, err = updater.EditText(c, nowPlaying, &td.EditTextMessageOpts{
@@ -275,11 +281,13 @@ func handleSingleTrack(c *td.Client, m *td.Message, updater *td.Message, song ut
 	}
 
 	qLen := cache.ChatCache.AddSong(chatId, &saveCache)
-
 	if qLen > 1 {
+		escURL := html.EscapeString(saveCache.URL)
+		escName := html.EscapeString(saveCache.Name)
+		escUser := html.EscapeString(saveCache.User)
 		queueInfo := fmt.Sprintf(
 			"<u><b>Added to queue: %d</b></u>\n\n<b>Title:</b> <a href='%s'>%s</a>\n\n<b>Duration:</b> %s min\n<b>Requested by:</b> %s",
-			qLen, saveCache.URL, saveCache.Name, utils.SecToMin(saveCache.Duration), saveCache.User,
+			qLen, escURL, escName, utils.SecToMin(saveCache.Duration), escUser,
 		)
 
 		_, err := updater.EditText(c, queueInfo, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("play"), ParseMode: "HTML", DisableWebPagePreview: true})
@@ -299,13 +307,17 @@ func handleSingleTrack(c *td.Client, m *td.Message, updater *td.Message, song ut
 
 	if err := vc.Calls.PlayMedia(chatId, saveCache.FilePath, saveCache.IsVideo, ""); err != nil {
 		cache.ChatCache.RemoveCurrentSong(chatId)
-		_, err = updater.EditText(c, err.Error(), &td.EditTextMessageOpts{ParseMode: "HTML", DisableWebPagePreview: true})
+		_, err = updater.EditText(c, html.EscapeString(err.Error()), &td.EditTextMessageOpts{ParseMode: "HTML", DisableWebPagePreview: true})
 		return err
 	}
 
+	escURLnp := html.EscapeString(saveCache.URL)
+	escNamenp := html.EscapeString(saveCache.Name)
+	escUsernp := html.EscapeString(saveCache.User)
+
 	nowPlaying := fmt.Sprintf(
 		"<u><b>| Started streaming</b></u>\n\n<b>Title:</b> <a href='%s'>%s</a>\n\n<b>Duration:</b> %s min\n<b>Requested by:</b> %s",
-		saveCache.URL, saveCache.Name, utils.SecToMin(song.Duration), saveCache.User,
+		escURLnp, escNamenp, utils.SecToMin(song.Duration), escUsernp,
 	)
 
 	_, err := updater.EditText(c, nowPlaying, &td.EditTextMessageOpts{
@@ -374,15 +386,17 @@ func handleMultipleTracks(c *td.Client, m *td.Message, updater *td.Message, trac
 	totalDuration := 0
 	for i, track := range tracksToAdd {
 		currentQLen := startLen + i + 1
+		escTrackName := html.EscapeString(track.Name)
 		fmt.Fprintf(&sb, "<b>%d.</b> %s\n└ Duration: %s\n",
-			currentQLen, track.Name, utils.SecToMin(track.Duration))
+			currentQLen, escTrackName, utils.SecToMin(track.Duration))
 		totalDuration += track.Duration
 	}
 
 	sb.WriteString("</blockquote>")
+	escRequester := html.EscapeString(firstName(c, m))
 	queueSummary := fmt.Sprintf(
 		"\n<b>Queue Total:</b> %d\n<b>Duration:</b> %s min\n<b>Requested by:</b> %s",
-		qLenAfter, utils.SecToMin(totalDuration), firstName(c, m),
+		qLenAfter, utils.SecToMin(totalDuration), escRequester,
 	)
 
 	sb.WriteString(queueSummary)

@@ -11,6 +11,7 @@ package handlers
 import (
 	"ashokshau/tgmusic/src/utils"
 	"fmt"
+	"html"
 	"log/slog"
 	"strings"
 
@@ -54,11 +55,14 @@ func playCallbackHandler(c *td.Client, ctx *td.Context) error {
 	}
 
 	buildTrackMessage := func(status, emoji string) string {
+		escURL := html.EscapeString(currentTrack.URL)
+		escName := html.EscapeString(currentTrack.Name)
+		escUser := html.EscapeString(currentTrack.User)
 		return fmt.Sprintf("%s <b>%s</b>\n\n<b>Track:</b> <a href='%s'>%s</a>\n<b>Duration:</b> %s\n<b>Requested by:</b> %s",
 			emoji, status,
-			currentTrack.URL, currentTrack.Name,
+			escURL, escName,
 			utils.SecToMin(currentTrack.Duration),
-			currentTrack.User,
+			escUser,
 		)
 	}
 
@@ -79,7 +83,8 @@ func playCallbackHandler(c *td.Client, ctx *td.Context) error {
 			_, _ = cb.EditMessageText(c, "Unable to stop playback.", &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons(""), ParseMode: "HTML", DisableWebPagePreview: true})
 			return nil
 		}
-		msg := fmt.Sprintf("<b>Playback stopped.</b>\nRequested by: %s", user.FirstName)
+
+		msg := fmt.Sprintf("<b>Playback stopped.</b>\nRequested by: %s", html.EscapeString(user.FirstName))
 		_ = cb.Answer(c, 0, false, "Playback stopped.", "")
 		_, err := cb.EditMessageText(c, msg, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons(""), ParseMode: "HTML", DisableWebPagePreview: true})
 		return err
@@ -91,7 +96,7 @@ func playCallbackHandler(c *td.Client, ctx *td.Context) error {
 			return nil
 		}
 		_ = cb.Answer(c, 0, false, "Playback paused.", "")
-		text := buildTrackMessage("Paused", "⏸") + fmt.Sprintf("\n\nPaused by %s", user.FirstName)
+		text := buildTrackMessage("Paused", "⏸") + fmt.Sprintf("\n\nPaused by %s", html.EscapeString(user.FirstName))
 		_, _ = cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("pause"), ParseMode: "HTML", DisableWebPagePreview: true})
 		return nil
 
@@ -102,7 +107,7 @@ func playCallbackHandler(c *td.Client, ctx *td.Context) error {
 			return nil
 		}
 		_ = cb.Answer(c, 0, false, "Playback resumed.", "")
-		text := buildTrackMessage("Now Playing", "▶") + fmt.Sprintf("\n\nResumed by %s", user.FirstName)
+		text := buildTrackMessage("Now Playing", "▶") + fmt.Sprintf("\n\nResumed by %s", html.EscapeString(user.FirstName))
 		_, _ = cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("resume"), ParseMode: "HTML", DisableWebPagePreview: true})
 		return nil
 
@@ -113,7 +118,7 @@ func playCallbackHandler(c *td.Client, ctx *td.Context) error {
 			return nil
 		}
 		_ = cb.Answer(c, 0, false, "Playback muted.", "")
-		text := buildTrackMessage("Muted", "🔇") + fmt.Sprintf("\n\nMuted by %s", user.FirstName)
+		text := buildTrackMessage("Muted", "🔇") + fmt.Sprintf("\n\nMuted by %s", html.EscapeString(user.FirstName))
 		_, _ = cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("mute"), ParseMode: "HTML", DisableWebPagePreview: true})
 		return nil
 
@@ -124,7 +129,7 @@ func playCallbackHandler(c *td.Client, ctx *td.Context) error {
 			return nil
 		}
 		_ = cb.Answer(c, 0, false, "Playback unmuted.", "")
-		text := buildTrackMessage("Now Playing", "▶") + fmt.Sprintf("\n\nUnmuted by %s", user.FirstName)
+		text := buildTrackMessage("Now Playing", "▶") + fmt.Sprintf("\n\nUnmuted by %s", html.EscapeString(user.FirstName))
 		_, _ = cb.EditMessageText(c, text, &td.EditTextMessageOpts{ReplyMarkup: core.ControlButtons("unmute"), DisableWebPagePreview: true})
 		return nil
 
