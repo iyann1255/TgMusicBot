@@ -98,6 +98,18 @@ func (y *youTubeData) getInfo() (utils.PlatformTracks, error) {
 			}
 		}
 
+		if title, err := getYouTubeTitleFromOEmbed(videoID); err == nil && title != "" {
+			tracks, err := searchYouTube(title, 10)
+			if err == nil {
+				for _, track := range tracks {
+					if track.Id == videoID {
+						return utils.PlatformTracks{Results: []utils.MusicTrack{track}}, nil
+					}
+				}
+			}
+		}
+
+		slog.Warn("Video ID was extracted but no matching track was found in search results", "video_id", videoID)
 		return getYouTubeVideo(ctx, videoID)
 	}
 

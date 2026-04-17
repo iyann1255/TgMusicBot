@@ -206,6 +206,34 @@ func isLiveNow(vr map[string]any) bool {
 	return false
 }
 
+// getYouTubeTitleFromOEmbed fetches the video title using YouTube's oEmbed API.
+func getYouTubeTitleFromOEmbed(videoID string) (string, error) {
+	apiURL := fmt.Sprintf("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=%s&format=json", videoID)
+
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		return "", fmt.Errorf("oEmbed request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("oEmbed returned status code: %d", resp.StatusCode)
+	}
+
+	var data struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", fmt.Errorf("failed to decode oEmbed response: %w", err)
+	}
+
+	if data.Title == "" {
+		return "", errors.New("oEmbed response contained empty title")
+	}
+
+	return data.Title, nil
+}
+
 func getYouTubeVideo(ctx context.Context, videoID string) (utils.PlatformTracks, error) {
 	resp, err := ytPost(ctx, "/youtubei/v1/player", map[string]any{"videoId": videoID})
 	if err != nil {
