@@ -54,6 +54,7 @@ func LoadModules(d *gotdbot.Dispatcher) {
 	d.AddHandler(handlers.NewCommand("stop", stopHandler))
 	d.AddHandler(handlers.NewCommand("end", stopHandler))
 	d.AddHandler(handlers.NewCommand("start", startHandler))
+	d.AddHandler(handlers.NewCommand("help", startHandler))
 	d.AddHandler(handlers.NewCommand("ping", pingHandler))
 	d.AddHandler(handlers.NewCommand("play", playHandler))
 	d.AddHandler(handlers.NewCommand("p", playHandler))

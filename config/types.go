@@ -39,6 +39,7 @@ type BotConfig struct {
 	DEVS              []int64  // DEVS is a list of developer user IDs.
 	CookiesPath       []string // CookiesPath is a list of paths to cookies files.
 	cookiesUrl        []string // cookiesUrl is a list of URLs to cookies files.
+	StartImg          string   // StartImg is the URL or path to the start image.
 	Port              string
 }
 

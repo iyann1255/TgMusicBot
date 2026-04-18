@@ -46,6 +46,7 @@ func LoadConfig() error {
 		SupportGroup:      getEnvStr("SUPPORT_GROUP", "https://t.me/FallenSupport"),
 		SupportChannel:    getEnvStr("SUPPORT_CHANNEL", "https://t.me/FallenProjects"),
 		cookiesUrl:        processCookieURLs(os.Getenv("COOKIES_URL")),
+		StartImg:          getEnvStr("START_IMG", "https://i.pinimg.com/736x/5a/ec/35/5aec35d6fd33e7b75aafb1ac76b5fcd3.jpg"),
 		Port:              getEnvStr("PORT", "6060"),
 	}
 

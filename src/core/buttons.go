@@ -58,6 +58,16 @@ func SupportKeyboard() *gotdbot.ReplyMarkupInlineKeyboard {
 	}
 }
 
+func SupportBtn() *gotdbot.ReplyMarkupInlineKeyboard {
+	channelBtn := url("Updates", config.Conf.SupportChannel)
+	groupBtn := url("Group", config.Conf.SupportGroup)
+	return &gotdbot.ReplyMarkupInlineKeyboard{
+		Rows: [][]gotdbot.InlineKeyboardButton{
+			{channelBtn, groupBtn},
+		},
+	}
+}
+
 func SettingsKeyboard(playMode, adminMode string, cmdDelete bool, language string) *gotdbot.ReplyMarkupInlineKeyboard {
 	playText := "Everyone"
 	if playMode == utils.Admins {
