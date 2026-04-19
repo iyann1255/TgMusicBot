@@ -18,7 +18,7 @@ import (
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
-// LeaveAll makes the bot leave all groups and channels it's currently in,
+// LeaveAll makes the bot leave all groups and channels it's currently in.
 func (c *TelegramCalls) LeaveAll() (int, error) {
 	leftCount := 0
 
@@ -33,7 +33,11 @@ func (c *TelegramCalls) LeaveAll() (int, error) {
 			return leftCount, fmt.Errorf("failed to get dialogs: %w", err)
 		}
 
-		logger.Info("for  found  dialogs", "user_id", userBot.Me().FirstName, "arg2", len(dialogs))
+		logger.Info("found dialogs",
+			"user", userBot.Me().FirstName,
+			"count", len(dialogs),
+		)
+
 		activeChats := make(map[int64]bool)
 		for _, id := range cache.ChatCache.GetActiveChats() {
 			activeChats[id] = true
@@ -42,6 +46,7 @@ func (c *TelegramCalls) LeaveAll() (int, error) {
 		for _, d := range dialogs {
 			peer := d.Peer
 			var chatID int64
+
 			switch p := peer.(type) {
 			case *telegram.PeerChannel:
 				chatID = p.ChannelID
@@ -50,30 +55,43 @@ func (c *TelegramCalls) LeaveAll() (int, error) {
 			case *telegram.PeerUser:
 				continue
 			default:
-				logger.Warn("Unknown peer type", "arg1", peer)
 				continue
 			}
 
-			if chatID == 0 {
+			if chatID == 0 || activeChats[chatID] {
 				continue
 			}
 
-			// Skip if this is an active chat
-			if activeChats[chatID] {
-				continue
-			}
+			for {
+				err = userBot.LeaveChannel(chatID)
+				if err == nil {
+					leftCount++
+					break
+				}
 
-			err = userBot.LeaveChannel(chatID)
-			if err != nil {
-				if strings.Contains(err.Error(), "USER_NOT_PARTICIPANT") || strings.Contains(err.Error(), "CHANNEL_PRIVATE") {
+				if strings.Contains(err.Error(), "USER_NOT_PARTICIPANT") ||
+					strings.Contains(err.Error(), "CHANNEL_PRIVATE") {
+					break
+				}
+
+				wait := telegram.GetFloodWait(err)
+				if wait > 0 {
+					logger.Warn("flood wait",
+						"chat_id", chatID,
+						"seconds", wait,
+					)
+					time.Sleep(time.Duration(wait+30) * time.Second)
 					continue
 				}
-				logger.Warn("Failed to leave chat", "chat_id", chatID, "error", err)
-				continue
+
+				logger.Warn("leave failed",
+					"chat_id", chatID,
+					"error", err,
+				)
+				break
 			}
 
-			leftCount++
-			time.Sleep(2 * time.Second)
+			time.Sleep(3 * time.Second)
 		}
 	}
 

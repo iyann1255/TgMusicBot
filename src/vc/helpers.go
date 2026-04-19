@@ -37,7 +37,7 @@ func handleFlood(err error) bool {
 	}
 
 	logger.Warn("Flood wait detected, sleeping", "seconds", wait)
-	time.Sleep(time.Duration(wait) * time.Second)
+	time.Sleep(time.Duration(wait+1) * time.Second)
 	return true
 }
 
