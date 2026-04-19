@@ -148,7 +148,7 @@ func ControlButtons(mode string) *gotdbot.ReplyMarkupInlineKeyboard {
 	case "play":
 		return &gotdbot.ReplyMarkupInlineKeyboard{
 			Rows: [][]gotdbot.InlineKeyboardButton{
-				{skipBtn, stopBtn, pauseBtn, resumeBtn},
+				{skipBtn, stopBtn, pauseBtn},
 				{addToPlaylistBtn, CloseBtn},
 			},
 		}

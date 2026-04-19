@@ -11,9 +11,9 @@ package handlers
 import (
 	"ashokshau/tgmusic/src/core/db"
 	"fmt"
-	"strconv"
+	"os"
+	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -25,13 +25,42 @@ var (
 	broadcastInProgress atomic.Bool
 )
 
+func getFloodWait(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	type retryError interface {
+		GetRetryAfter() int
+	}
+
+	if re, ok := err.(retryError); ok {
+		return re.GetRetryAfter()
+	}
+
+	if tdErr, ok := err.(*td.Error); ok {
+		return tdErr.GetRetryAfter()
+	}
+
+	if tdErr, ok := err.(td.Error); ok {
+		return tdErr.GetRetryAfter()
+	}
+
+	return 0
+}
+
 func cancelBroadcastHandler(c *td.Client, ctx *td.Context) error {
 	if !isDev(ctx) {
 		return td.EndGroups
 	}
 	m := ctx.EffectiveMessage
+	if !broadcastInProgress.Load() {
+		_, _ = m.ReplyText(c, "No broadcast in progress.", nil)
+		return td.EndGroups
+	}
+
 	broadcastCancelFlag.Store(true)
-	_, _ = m.ReplyText(c, "🚫 Broadcast cancelled.", nil)
+	_, _ = m.ReplyText(c, "Broadcast stopped.", nil)
 	return td.EndGroups
 }
 
@@ -42,192 +71,148 @@ func broadcastHandler(c *td.Client, ctx *td.Context) error {
 
 	m := ctx.EffectiveMessage
 	if broadcastInProgress.Load() {
-		_, _ = m.ReplyText(c, "❗ A broadcast is already in progress. Please wait for it to complete or cancel it with /cancelbroadcast", nil)
+		_, _ = m.ReplyText(c, "A broadcast is already in progress.", nil)
 		return td.EndGroups
 	}
 
-	broadcastInProgress.Store(true)
-	defer broadcastInProgress.Store(false)
-
 	reply, err := m.GetRepliedMessage(c)
 	if err != nil {
-		_, _ = m.ReplyText(c, "❗ Reply to a message to broadcast.\nExample:\n<code> /broadcast -copy -limit 100 -delay 2s</code>", &td.SendTextMessageOpts{ParseMode: "HTMl"})
+		usage := `Please reply to a message to broadcast.
+
+Usage:
+-chat  : groups only
+-user  : users only
+-both  : groups + users (default)
+-copy  : send as copy
+
+Examples:
+/broadcast
+/broadcast -chat
+/broadcast -user -copy
+`
+
+		_, _ = m.ReplyText(c, usage, nil)
 		return td.EndGroups
 	}
 
 	args := strings.Fields(Args(m))
+
 	copyMode := false
-	noChats := false
-	noUsers := false
-	limit := 0
-	delay := time.Duration(0)
+	mode := "both" // default
 
 	for _, a := range args {
-		switch {
-		case a == "-copy":
+		switch a {
+		case "-copy":
 			copyMode = true
-		case a == "-nochat" || a == "-nochats":
-			noChats = true
-		case a == "-nouser" || a == "-nousers":
-			noUsers = true
-
-		case strings.HasPrefix(a, "-limit"):
-			val := strings.TrimPrefix(a, "-limit")
-			val = strings.TrimSpace(val)
-			n, err := strconv.Atoi(val)
-			if err != nil || n <= 0 {
-				_, _ = m.ReplyText(c, "❗ Invalid limit value. Example: <code>-limit 100</code>", &td.SendTextMessageOpts{ParseMode: "HTMl"})
-				return td.EndGroups
-			}
-			limit = n
-
-		case strings.HasPrefix(a, "-delay"):
-			val := strings.TrimPrefix(a, "-delay")
-			val = strings.TrimSpace(val)
-			d, err := time.ParseDuration(val)
-			if err != nil {
-				_, _ = m.ReplyText(c, "❗ Invalid delay. Example: <code>-delay 2s</code>", &td.SendTextMessageOpts{ParseMode: "HTMl"})
-				return td.EndGroups
-			}
-			delay = d
+		case "-chat":
+			mode = "chat"
+		case "-user":
+			mode = "user"
+		case "-both":
+			mode = "both"
 		}
 	}
 
-	broadcastCancelFlag.Store(false)
 	chats, _ := db.Instance.GetAllChats()
 	users, _ := db.Instance.GetAllUsers()
 
-	var targets []int64
-	if !noChats {
-		targets = append(targets, chats...)
+	groupsMap := make(map[int64]bool)
+	for _, id := range chats {
+		groupsMap[id] = true
 	}
-	if !noUsers {
+
+	var targets []int64
+
+	switch mode {
+	case "chat":
+		targets = append(targets, chats...)
+	case "user":
+		targets = append(targets, users...)
+	case "both":
+		targets = append(targets, chats...)
 		targets = append(targets, users...)
 	}
 
 	if len(targets) == 0 {
-		_, _ = m.ReplyText(c, "❗ No targets found.", nil)
+		_, _ = m.ReplyText(c, "No targets found.", nil)
 		return td.EndGroups
 	}
 
-	if limit > 0 && limit < len(targets) {
-		targets = targets[:limit]
-	}
+	broadcastCancelFlag.Store(false)
+	broadcastInProgress.Store(true)
 
-	sentMsg, _ := m.ReplyText(c,
-		fmt.Sprintf(
-			"🚀 <b>Broadcast Started</b>\nTargets: %d\nMode: %s\nDelay: %v\n\nSend <code>/cancelbroadcast</code> to stop.",
-			len(targets),
-			map[bool]string{true: "Copy", false: "Forward"}[copyMode],
-			delay,
-		), &td.SendTextMessageOpts{ParseMode: "HTML"})
+	sentMsg, _ := m.ReplyText(c, "Broadcast started.", nil)
 
-	var success int32
-	var failed int32
+	go func() {
+		defer broadcastInProgress.Store(false)
 
-	type QueueItem struct {
-		ID         int64
-		RetryCount int
-	}
+		var failedBuilder strings.Builder
+		count, ucount := 0, 0
 
-	queue := make([]QueueItem, len(targets))
-	for i, id := range targets {
-		queue[i] = QueueItem{ID: id, RetryCount: 0}
-	}
-	var queueMutex sync.Mutex
-
-	interval := time.Second / 25
-	if delay > 0 {
-		interval = delay
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	workers := 20
-	wg := sync.WaitGroup{}
-
-	worker := func() {
-		for {
-			queueMutex.Lock()
-			if len(queue) == 0 {
-				queueMutex.Unlock()
-				break
-			}
-			item := queue[0]
-			queue = queue[1:]
-			queueMutex.Unlock()
-
+		for _, chatID := range targets {
 			if broadcastCancelFlag.Load() {
-				atomic.AddInt32(&failed, 1)
-				continue
+				_, _ = sentMsg.EditText(
+					c,
+					fmt.Sprintf("Broadcast stopped.\nGroups: %d\nUsers: %d", count, ucount),
+					nil,
+				)
+				return
 			}
-
-			<-ticker.C
 
 			var errSend error
 			if copyMode {
-				_, errSend = reply.Copy(c, item.ID, &td.SendCopyOpts{
+				_, errSend = reply.Copy(c, chatID, &td.SendCopyOpts{
 					ReplyMarkup: reply.ReplyMarkup,
 				})
 			} else {
-				_, errSend = reply.Forward(c, item.ID, &td.ForwardMessageOpts{})
+				_, errSend = reply.Forward(c, chatID, nil)
 			}
 
 			if errSend == nil {
-				atomic.AddInt32(&success, 1)
-				continue
-			}
-
-			/*
-				if wait := getFloodWait(errSend); wait > 0 {
-					c.Logger.Warn("FloodWait s for chatID=", "arg1", wait, "id", item.ID)
-
-					if item.RetryCount < 2 {
-						item.RetryCount++
-						queueMutex.Lock()
-						queue = append(queue, item)
-						queueMutex.Unlock()
-
-						time.Sleep(time.Duration(wait) * time.Second)
-						continue
-					} else {
-
-					}
+				if groupsMap[chatID] {
+					count++
+				} else {
+					ucount++
 				}
-			*/
-
-			c.Logger.Warn("[Broadcast] max retries reached for chatID", "id", item.ID)
-			atomic.AddInt32(&failed, 1)
-			c.Logger.Warn("[Broadcast] chatID:  error", "id", item.ID, "error", errSend)
+				time.Sleep(200 * time.Millisecond)
+			} else {
+				wait := getFloodWait(errSend)
+				if wait > 0 {
+					time.Sleep(time.Duration(wait+30) * time.Second)
+					continue
+				}
+				failedBuilder.WriteString(fmt.Sprintf("%d - %v\n", chatID, errSend))
+			}
 		}
-		wg.Done()
-	}
 
-	wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go worker()
-	}
+		text := fmt.Sprintf("Broadcast ended.\nGroups: %d\nUsers: %d", count, ucount)
+		failedStr := failedBuilder.String()
 
-	wg.Wait()
+		if failedStr != "" {
+			errFile := filepath.Join(
+				os.TempDir(),
+				fmt.Sprintf("errors_%d.txt", time.Now().UnixNano()),
+			)
 
-	total := len(targets)
-	result := fmt.Sprintf(
-		"📢 <b>Broadcast Complete</b>\n\n"+
-			"👥 Total: %d\n"+
-			"✅ Success: %d\n"+
-			"❌ Failed: %d\n"+
-			"⚙ Mode: %s\n"+
-			"⏱ Delay: %v\n"+
-			"🛑 Cancelled: %v\n",
-		total,
-		success,
-		failed,
-		map[bool]string{true: "Copy", false: "Forward"}[copyMode],
-		delay,
-		broadcastCancelFlag.Load(),
-	)
+			if err := os.WriteFile(errFile, []byte(failedStr), 0644); err == nil {
+				defer os.Remove(errFile)
 
-	_, _ = sentMsg.EditText(c, result, &td.EditTextMessageOpts{ParseMode: "HTML"})
-	broadcastInProgress.Store(false)
+				_, errSendDoc := m.ReplyDocument(
+					c,
+					td.InputFileLocal{Path: errFile},
+					&td.SendDocumentOpts{Caption: text},
+				)
+
+				if errSendDoc != nil {
+					_, _ = sentMsg.EditText(c, text, nil)
+				}
+			} else {
+				_, _ = sentMsg.EditText(c, text, nil)
+			}
+		} else {
+			_, _ = sentMsg.EditText(c, text, nil)
+		}
+	}()
+
 	return td.EndGroups
 }
