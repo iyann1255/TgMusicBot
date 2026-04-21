@@ -64,6 +64,7 @@ const (
 	DirectLink = "direct_link"
 	Tidal      = "tidal"
 	MXPlayer   = "mxplayer"
+	Twitch     = "twitch"
 )
 
 const (
