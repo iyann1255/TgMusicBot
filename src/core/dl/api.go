@@ -42,6 +42,13 @@ var apiPatterns = map[string]*regexp.Regexp{
 	utils.Tidal:      regexp.MustCompile(`(?i)https?:\/\/(?:www\.|listen\.)?tidal\.com\/(?:browse\/)?(track|album|playlist)\/([a-zA-Z0-9-]+)(?:[\/?].*)?`),
 	utils.MXPlayer:   regexp.MustCompile(`(?i)https?:\/\/(?:www\.)?mxplayer\.in\/(?:show|movie)\/.*`),
 	utils.Twitch:     regexp.MustCompile(`(?i)https?:\/\/(?:www\.|m\.)?twitch\.tv\/(?:videos|[\w._-]+\/video)\/\d+`),
+	utils.TwitchClip: regexp.MustCompile(
+		`(?i)https?:\/\/(?:www\.|m\.)?(?:` +
+			`twitch\.tv\/clip\/[\w-]+|` +
+			`clips\.twitch\.tv\/[\w-]+|` +
+			`twitch\.tv\/[\w-]+\/clip\/[\w-]+` +
+			`)`,
+	),
 }
 
 // newApiData creates and initializes a new apiData instance with the provided query.

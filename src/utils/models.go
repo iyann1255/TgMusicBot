@@ -65,6 +65,7 @@ const (
 	Tidal      = "tidal"
 	MXPlayer   = "mxplayer"
 	Twitch     = "twitch"
+	TwitchClip = "twitch_clip"
 )
 
 const (
