@@ -43,7 +43,7 @@ var OwnerBtn = cb("Owner", "help_owner")
 var DevsBtn = cb("Devs", "help_devs")
 var PlaylistBtn = cb("Playlist", "help_playlist")
 
-var SourceCodeBtn = url("Owner", "@in_here1")
+var SourceCodeBtn = url("Owner", "t.me/in_here1")
 
 func SupportKeyboard() *gotdbot.ReplyMarkupInlineKeyboard {
 
