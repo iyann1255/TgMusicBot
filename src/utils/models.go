@@ -66,6 +66,8 @@ const (
 	MXPlayer   = "mxplayer"
 	Twitch     = "twitch"
 	TwitchClip = "twitch_clip"
+	Kick       = "kick"
+	KickClip   = "kick_clip"
 )
 
 const (

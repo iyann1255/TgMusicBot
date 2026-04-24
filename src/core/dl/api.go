@@ -49,6 +49,8 @@ var apiPatterns = map[string]*regexp.Regexp{
 			`twitch\.tv\/[\w-]+\/clip\/[\w-]+` +
 			`)`,
 	),
+	utils.Kick:     regexp.MustCompile(`(?i)https?:\/\/(?:www\.)?kick\.com\/[\w._-]+\/videos\/[a-fA-F0-9-]+`),
+	utils.KickClip: regexp.MustCompile(`(?i)https?:\/\/(?:www\.)?kick\.com\/[\w._-]+\/clips\/[\w-]+`),
 }
 
 // newApiData creates and initializes a new apiData instance with the provided query.

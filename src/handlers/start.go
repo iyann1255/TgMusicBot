@@ -55,7 +55,7 @@ func startHandler(c *td.Client, ctx *td.Context) error {
 		}(chatID)
 
 		response := fmt.Sprintf(
-			"Hey %s,\nThis is %s !\n\n<b>Supported Platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, MXPlayer, Deezer, Twitch....\n\n<b><i>Click on the help button for more info.</i></b>",
+			"Hey %s,\nThis is %s !\n\n<b>Supported Platforms:</b> YouTube, Spotify, Apple Music, SoundCloud, MXPlayer, Deezer, Twitch, Kick....\n\n<b><i>Click on the help button for more info.</i></b>",
 			firstName(c, m),
 			c.Me.FirstName,
 		)
